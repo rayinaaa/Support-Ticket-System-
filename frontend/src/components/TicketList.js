@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import API from '../api';
 import { categories as catList, priorities as priList, statuses as statList } from '../constants';
 
 // lists that include the empty "All" option
@@ -18,7 +18,7 @@ export default function TicketList() {
     if (filters.priority) params.priority = filters.priority;
     if (filters.status) params.status = filters.status;
     if (search) params.search = search;
-    axios.get('/api/tickets/', { params }).then((res) => setTickets(res.data));
+    API.get('/api/tickets/tickets/', { params }).then((res) => setTickets(res.data));
   };
 
   useEffect(() => {
@@ -26,8 +26,8 @@ export default function TicketList() {
   }, [filters, search]);
 
   const handleStatusChange = (id, status) => {
-    axios
-      .patch(`/api/tickets/${id}/`, { status })
+    API
+      .patch(`/api/tickets/tickets/${id}/`, { status })
       .then(() => load());
   };
 

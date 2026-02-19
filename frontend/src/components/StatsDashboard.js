@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import API from '../api';
 
 export default function StatsDashboard({ refreshKey }) {
   const [stats, setStats] = useState(null);
 
   const load = () => {
-    axios.get('/api/tickets/stats/').then((res) => setStats(res.data));
+    API.get('/api/tickets/stats/').then((res) => setStats(res.data));
   };
 
   useEffect(() => {

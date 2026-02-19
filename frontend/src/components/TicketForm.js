@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import API from '../api';
 import { categories, priorities } from '../constants';
 
 export default function TicketForm({ onCreated }) {
@@ -13,7 +13,7 @@ export default function TicketForm({ onCreated }) {
   useEffect(() => {
     if (!description) return;
     setSuggesting(true);
-    axios
+    API
       .post('/api/tickets/classify/', { description })
       .then((res) => {
         const { suggested_category, suggested_priority } = res.data;
@@ -27,8 +27,8 @@ export default function TicketForm({ onCreated }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     setLoading(true);
-    axios
-      .post('/api/tickets/', { title, description, category, priority })
+    API
+      .post('/api/tickets/tickets/', { title, description, category, priority })
       .then(() => {
         setTitle('');
         setDescription('');
