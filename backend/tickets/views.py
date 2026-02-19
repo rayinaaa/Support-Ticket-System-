@@ -2,13 +2,9 @@ import json
 import os
 
 from django.db.models import Count, Min, Max, Q
-from django.db.models.functions import Now
 from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
-import openai
 
 from .models import Ticket
 from .serializers import TicketSerializer
@@ -21,10 +17,6 @@ class TicketViewSet(viewsets.ModelViewSet):
     filterset_fields = ['category', 'priority', 'status']
     search_fields = ['title', 'description']
 
-    def get_queryset(self):
-        qs = super().get_queryset()
-        # filtering and search are applied automatically
-        return qs
 
     def partial_update(self, request, *args, **kwargs):
         # allow updating only status, category, priority
@@ -36,24 +28,34 @@ class TicketViewSet(viewsets.ModelViewSet):
 
 
 class StatsView(APIView):
+    """Return aggregated ticket statistics.
+
+    The view builds a single database query and then formats the
+    results into a simple JSON structure. Looping over the choice
+    tuples keeps the code DRY and makes it easy to add/remove values
+    later.
+    """
+
     def get(self, request):
-        # aggregate counts and breakdowns at DB level
-        stats = Ticket.objects.aggregate(
-            total_tickets=Count('id'),
-            open_tickets=Count('id', filter=Q(status='open')),
-            low_priority=Count('id', filter=Q(priority='low')),
-            medium_priority=Count('id', filter=Q(priority='medium')),
-            high_priority=Count('id', filter=Q(priority='high')),
-            critical_priority=Count('id', filter=Q(priority='critical')),
-            billing_category=Count('id', filter=Q(category='billing')),
-            technical_category=Count('id', filter=Q(category='technical')),
-            account_category=Count('id', filter=Q(category='account')),
-            general_category=Count('id', filter=Q(category='general')),
+        qs = Ticket.objects
+        # base aggregation for totals and date bounds
+        stats = qs.aggregate(
+            total=Count('id'),
+            open=Count('id', filter=Q(status='open')),
             first_date=Min('created_at'),
             last_date=Max('created_at'),
         )
-        total = stats.get('total_tickets') or 0
-        # calculate avg per day
+
+        # breakdowns for priorities and categories
+        for field, choices in (
+            ('priority', Ticket.PRIORITY_CHOICES),
+            ('category', Ticket.CATEGORY_CHOICES),
+        ):
+            for value, _ in choices:
+                key = f"{field}_{value}"
+                stats[key] = qs.filter(**{field: value}).count()
+
+        total = stats['total'] or 0
         first = stats.get('first_date')
         last = stats.get('last_date')
         if first and last and first != last:
@@ -61,23 +63,14 @@ class StatsView(APIView):
             avg_per_day = total / days
         else:
             avg_per_day = total
+
         return Response(
             {
                 'total_tickets': total,
-                'open_tickets': stats.get('open_tickets', 0),
+                'open_tickets': stats.get('open', 0),
                 'avg_tickets_per_day': avg_per_day,
-                'priority_breakdown': {
-                    'low': stats.get('low_priority', 0),
-                    'medium': stats.get('medium_priority', 0),
-                    'high': stats.get('high_priority', 0),
-                    'critical': stats.get('critical_priority', 0),
-                },
-                'category_breakdown': {
-                    'billing': stats.get('billing_category', 0),
-                    'technical': stats.get('technical_category', 0),
-                    'account': stats.get('account_category', 0),
-                    'general': stats.get('general_category', 0),
-                },
+                'priority_breakdown': {v: stats.get(f'priority_{v}', 0) for v, _ in Ticket.PRIORITY_CHOICES},
+                'category_breakdown': {v: stats.get(f'category_{v}', 0) for v, _ in Ticket.CATEGORY_CHOICES},
             }
         )
 
@@ -91,29 +84,37 @@ class ClassifyView(APIView):
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
             return Response(default)
-        openai.api_key = api_key
-        prompt = (
-            "You are an automated ticket classifier.\n"
-            "Given a ticket description, output a JSON object with exactly two keys:"
-            "suggested_category and suggested_priority.\n"
-            "Categories must be one of: billing, technical, account, general.\n"
-            "Priorities must be one of: low, medium, high, critical.\n"
-            "Respond only with valid JSON, no additional text.\n"
-            f"Description: {description}\n"
-        )
         try:
-            resp = openai.Completion.create(
-                engine='text-davinci-003',
-                prompt=prompt,
+            # lazily import the new OpenAI client so the package isn't a hard
+            # dependency for every use of the module.
+            from openai import OpenAI
+
+            client = OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an automated ticket classifier. Given a ticket "
+                            "description, output a JSON object with exactly two keys: "
+                            "suggested_category and suggested_priority. Categories must "
+                            "be one of: billing, technical, account, general. Priorities "
+                            "must be one of: low, medium, high, critical. Respond only "
+                            "with valid JSON, no additional text."
+                        ),
+                    },
+                    {"role": "user", "content": f"Description: {description}"},
+                ],
                 max_tokens=60,
                 temperature=0,
             )
-            text = resp.choices[0].text.strip()
+            text = response.choices[0].message.content.strip()
             data = json.loads(text)
             cat = data.get('suggested_category')
             pri = data.get('suggested_priority')
-            if cat not in ['billing', 'technical', 'account', 'general'] or pri not in ['low', 'medium', 'high', 'critical']:
-                raise ValueError('invalid values')
+            if cat not in {c for c, _ in Ticket.CATEGORY_CHOICES} or pri not in {p for p, _ in Ticket.PRIORITY_CHOICES}:
+                raise ValueError("invalid values")
             return Response({'suggested_category': cat, 'suggested_priority': pri})
         except Exception:
             return Response(default)
