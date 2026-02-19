@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-
-const categories = ['billing', 'technical', 'account', 'general'];
-const priorities = ['low', 'medium', 'high', 'critical'];
+import { categories, priorities } from '../constants';
 
 export default function TicketForm({ onCreated }) {
   const [title, setTitle] = useState('');

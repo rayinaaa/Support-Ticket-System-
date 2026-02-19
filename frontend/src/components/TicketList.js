@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { categories as catList, priorities as priList, statuses as statList } from '../constants';
 
-const categories = ['', 'billing', 'technical', 'account', 'general'];
-const priorities = ['', 'low', 'medium', 'high', 'critical'];
-const statuses = ['', 'open', 'in_progress', 'resolved', 'closed'];
+// lists that include the empty "All" option
+const categories = ['', ...catList];
+const priorities = ['', ...priList];
+const statuses = ['', ...statList];
 
 export default function TicketList() {
   const [tickets, setTickets] = useState([]);
@@ -100,13 +102,11 @@ export default function TicketList() {
                   value={t.status}
                   onChange={(e) => handleStatusChange(t.id, e.target.value)}
                 >
-                  {statuses
-                    .slice(1)
-                    .map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
+                  {statList.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
                 </select>
               </td>
               <td>{new Date(t.created_at).toLocaleString()}</td>
