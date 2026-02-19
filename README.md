@@ -65,4 +65,4 @@ You can iterate on the backend by editing files in `backend/` and the frontend u
 
 ---
 
-This setup aims to be clear, minimal, and production-ready. Enjoy building!
+This setup aims to be clear, minimal, and production-ready.
